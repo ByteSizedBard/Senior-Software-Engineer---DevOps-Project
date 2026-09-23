@@ -1,0 +1,20 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+*.tfplan.*
+plan_output.txt
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored - HashiCorp
+# recommends committing it so everyone (and CI) resolves the same provider
+# version/checksums. Run `terraform init` in each env directory and commit
+# the resulting infra/envs/*/.terraform.lock.hcl before submitting.
+
+# Local DB backups
+/backups/
+
+# OS / editor cruft
+.DS_Store
+*.swp

@@ -1,0 +1,30 @@
+# Almanac - local database stack for the DevOps assessment.
+# Maintained by ByteSizedBard.
+services:
+  db:
+    image: postgres:16
+    container_name: almanac_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app_admin
+      POSTGRES_PASSWORD: app_password
+      POSTGRES_DB: almanac
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # Postgres only processes TOP-LEVEL files in /docker-entrypoint-initdb.d
+      # (it does not descend into subdirectories), and it runs them in
+      # lexical filename order on first startup only (empty data dir).
+      # So each file is mounted individually, numbered to control order:
+      - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
+      - ./db/migrations/002_add_indexes.sql:/docker-entrypoint-initdb.d/002_add_indexes.sql:ro
+      - ./db/seed/seed.sql:/docker-entrypoint-initdb.d/003_seed_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_admin -d almanac"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_data:

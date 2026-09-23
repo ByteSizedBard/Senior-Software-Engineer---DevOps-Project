@@ -1,0 +1,93 @@
+name: Almanac Terraform CI
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.9.5"
+  # Placeholder credentials: the AWS SDK still wants *some* string here even
+  # though skip_credentials_validation / skip_requesting_account_id /
+  # skip_metadata_api_check (set in each env's providers.tf) are what
+  # actually stop the provider from trying to reach a real AWS account.
+  AWS_ACCESS_KEY_ID: "test"
+  AWS_SECRET_ACCESS_KEY: "test"
+  AWS_DEFAULT_REGION: "us-east-1"
+
+jobs:
+  terraform:
+    name: Terraform fmt / validate / plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    defaults:
+      run:
+        working-directory: infra/envs/${{ matrix.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform fmt (check only, whole repo)
+        run: terraform fmt -check -recursive
+        working-directory: infra
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -refresh=false \
+            -var-file="${{ matrix.environment }}.tfvars" \
+            -no-color \
+            -out=terraform.tfplan
+          terraform show -no-color terraform.tfplan > plan_output.txt
+        continue-on-error: true
+
+      - name: Upload plan as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: infra/envs/${{ matrix.environment }}/plan_output.txt
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'infra/envs/${{ matrix.environment }}/plan_output.txt';
+            let planText = 'No plan output produced.';
+            if (fs.existsSync(path)) {
+              planText = fs.readFileSync(path, 'utf8');
+              if (planText.length > 60000) {
+                planText = planText.slice(0, 60000) + '\n... (truncated, see workflow artifact for full plan)';
+              }
+            }
+            const body = `#### Terraform Plan - \`${{ matrix.environment }}\`\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${planText}\n\`\`\`\n\n</details>`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail job if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
