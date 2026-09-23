@@ -169,7 +169,7 @@ constraints (`checkout_date > checkin_date`, `amount >= 0`) and a foreign key fr
 4 statuses, with `created_at` spread over the last 90 days (so some rows fall inside and
 some outside the target query's 30-day window). `booking_events` rows are added for a
 subset of bookings (a `created` event for ~40%, plus a `status_changed` event for ~20%).
-The script is idempotent — it `TRUNCATE`s both tables first, so it's safe to re-run.
+The seed script is safely rerunnable — it truncates the existing seed data before generating a fresh dataset.
 
 One implementation note worth calling out: the first draft picked each row's city/org/status
 with `(SELECT city FROM cities ORDER BY random() LIMIT 1)`. That looks like it varies per
@@ -209,8 +209,8 @@ CREATE INDEX idx_hotel_bookings_city_created_at
   from the index, without touching the table (an index-only scan). `INCLUDE` doesn't
   guarantee that plan gets chosen, though: the planner also weighs table statistics, cost
   estimates, and the visibility map, and recently-modified rows can still force a heap
-  fetch. Use `EXPLAIN ANALYZE` on your own data to confirm which plan it actually picks.
-- On the 200-row seed data in this repo, `EXPLAIN ANALYZE` does show
+  fetch.The covering index enables an index-only scan when PostgreSQL's planner determines it is beneficial. On very small datasets, PostgreSQL may instead choose a sequential scan because scanning the table can be cheaper.
+- The covering index enables an index-only scan when PostgreSQL's planner determines it is beneficial. On very small datasets, PostgreSQL may instead choose a sequential scan because scanning the table can be cheaper.
   `Index Only Scan using idx_hotel_bookings_city_created_at` rather than a sequential scan
   — but that's this dataset's size and distribution, not a guarantee for every dataset.
 
